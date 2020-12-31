@@ -1,0 +1,58 @@
+load("//support/bazel:python.bzl", "setup_venv")
+load("//support/bazel:conan.bzl", "conan_install")
+
+# We setup `venv` in which to install `conan`.
+#
+# This internally uses a `repository_rule()` to execute `pip install`
+# inside the `venv` and expose `conan`.
+#
+# Ideally we would like to use `rules_python`, but that has two problems:
+# 1) currently it does not generate a `py_binary()` for the entry points of a
+# python dependency (https://github.com/bazelbuild/rules_python/issues/341) and
+# 2) even if it would, we need a file that is available during the loading
+# phase to be used in the `conan_install()` invocation below. A binary generated
+# via `py_binary()` during  the build phase will not be usable.
+setup_venv(
+    name = "venv",
+    quiet = False,
+)
+
+# Generate a `conanbuildinfo.json` and translate it into `variables.bzl`
+# file that can be loaded.
+#
+# This internally uses a `repository_rule()` to install the `conan`
+# dependencies. A python script is called to parse the `conanbuildinfo.json`
+# and translate it into a `variables.bzl` file. This is the easiest approach
+# instead of setting up a custom `bazel` generator for `conan` as the JSON
+# already contains everything we need.
+#
+# We only need the `setup_venv()` call to get a `conan` executable. If
+# we were to run in an environment where one is available, we could omit
+# the previous step and pass `conan_binary` here instead of
+# `conan_binary_target`.
+#
+# `conan.bzl` also exposes a `conan_repository()` for users that already have
+# a `conanbuildinfo.json` available and don't want to run a `conan install`.
+conan_install(
+    name = "conan-generated",
+    conan_binary_target = "@venv//:conan",
+    conanfile = "//support/conan:conanfile.txt",
+    lockfile = "//support/conan:conan.lock",
+    quiet = False,
+)
+
+load("@conan-generated//:variables.bzl", conan_root_path = "ROOTPATH")
+
+# The `conan_install()` does not setup `cc_library()` and `cc_binary()`
+# targets for us. This might be an avenue for future improvments.
+# Instead we generated the `variables.bzl` file from the `conanbuildinfo.json`
+# which can be used to setup a `local_repository()` pointing to the `conan`
+# cache / data directory via the `ROOTPATH` variable and requires a custom
+# `build_file` where the user writes out the `cc_library()` and `cc_binary()`
+# targets.
+# Note: this will of course not work with the Windows `short_path` hack.
+new_local_repository(
+    name = "conan",
+    build_file = "support/conan/CONAN_BUILD.bazel",
+    path = conan_root_path,
+)

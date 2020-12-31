@@ -1,0 +1,26 @@
+load("@rules_cc//cc:defs.bzl", "cc_import", "cc_library")
+load(
+    "@conan-generated//:variables.bzl",
+    "FMT_INCLUDE_PATHS",
+    "FMT_LIBS",
+    "FMT_LIB_PATHS",
+)
+
+cc_import(
+    name = "fmt-imported",
+    hdrs = glob(["%s/**/*.h" % p for p in FMT_INCLUDE_PATHS]),
+    static_library = "%s/lib%s.a" % (
+        FMT_LIB_PATHS[0],
+        FMT_LIBS[0],
+    ),
+    visibility = ["//visibility:public"],
+)
+
+# we do this `cc_import()`/`cc_library()` dance to be able to #include <fmt/...>
+cc_library(
+    name = "fmt",
+    hdrs = glob(["%s/**/*.h" % p for p in FMT_INCLUDE_PATHS]),
+    includes = FMT_INCLUDE_PATHS,
+    visibility = ["//visibility:public"],
+    deps = [":fmt-imported"],
+)
